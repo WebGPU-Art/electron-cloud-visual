@@ -63,7 +63,7 @@ function selectedInfo() {
   const electronCount = formulaElectronCount(molecule.formula);
   const composition=molecularComposition(molecule.atoms);
   return {
-    eyebrow: `常见化合物 · ${molecule.formula}`,
+    eyebrow: `${molecule.validated3d?'PUBCHEM 3D':'常见化合物'} · ${molecule.formula}`,
     name: molecule.name,
     symbol: molecule.formula,
     description: molecule.description,
@@ -74,6 +74,8 @@ function selectedInfo() {
     atomCount: molecule.atoms.length,
     bondCount: inferBonds(molecule.atoms,molecule.id,molecule.bonds).length,
     composition,
+    source: molecule.source,
+    validated3d: molecule.validated3d,
   };
 }
 
@@ -96,7 +98,7 @@ function renderApp() {
     <div class="orbit-card molecule-model-card"><div class="orbit-card-title">分子模型 <span>${info.electrons} e⁻</span></div>
       <div class="molecule-stats"><span><b>${info.atomCount}</b>可视原子中心</span><span><b>${info.bondCount}</b>推断键连接</span></div>
       <div class="composition-row">${info.composition.map(({symbol,count})=>`<span>${symbol}<b>×${count}</b></span>`).join('')}</div>
-      <p>复杂分子采用可视骨架；分子式中的部分氢原子可能按结构式惯例省略。</p>
+      <p>${info.validated3d?`${info.source} · 重原子 conformer 已通过键长、连通性和三主轴厚度校验。`:'复杂分子采用可视骨架；分子式中的部分氢原子可能按结构式惯例省略。'}</p>
     </div>`:`
     <div class="orbit-card"><div class="orbit-card-title">电子层分布 <span>${info.electrons} e⁻</span></div>
       <div class="shells">${info.shells.slice(0, 5).map((count, index) => `<div class="shell"><span>n=${index + 1}</span><i style="--fill:${Math.min(100, count / [2,8,18,32,32][index] * 100)}%"></i><b>${count}</b></div>`).join('')}</div>
@@ -149,7 +151,7 @@ function renderApp() {
           <section class="molecules compact-molecules" id="molecules">
             <div class="section-heading"><div><p class="eyebrow">MOLECULAR LIBRARY</p><h2>常见化合物</h2></div><p>${molecules.length} 种模型</p></div>
             <div class="molecule-grid">
-          ${molecules.map((molecule) => `<button class="molecule-card ${current.kind === 'molecule' && current.id === molecule.id ? 'active' : ''}" data-molecule="${molecule.id}"><span>${molecule.formula}</span><b>${molecule.name}</b><small>${molecule.geometry}</small><i>→</i></button>`).join('')}
+          ${molecules.map((molecule) => `<button class="molecule-card ${current.kind === 'molecule' && current.id === molecule.id ? 'active' : ''}" data-molecule="${molecule.id}"><span>${molecule.formula}</span><b>${molecule.name}</b><small>${molecule.geometry}${molecule.validated3d?' · 3D ✓':''}</small><i>→</i></button>`).join('')}
             </div>
           </section>
         </aside>

@@ -309,7 +309,8 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
     const bind=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:uniform}}]});
     const context = canvas.getContext('webgpu');
     const molecularExtent=Math.max(...atoms.map((atom)=>Math.hypot(atom.x,atom.y,atom.z)));
-    let rotation=[0.14,-.17,0,.975],scale=molecule?Math.min(2.7,Math.max(1.7,6.5/(molecularExtent+1.2))):2.7,active=true,hovered=false,dragging=false,dirty=true,px=0,py=0;
+    const minimumScale=molecule?1.05:1.5;
+    let rotation=[0.14,-.17,0,.975],scale=molecule?Math.min(2.7,Math.max(1.15,6.5/(molecularExtent+1.2))):2.7,active=true,hovered=false,dragging=false,dirty=true,px=0,py=0;
     function resize(){const box=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio,1.5);canvas.width=Math.max(1,box.width*ratio);canvas.height=Math.max(1,box.height*ratio);context.configure({device,format,alphaMode:'premultiplied'});dirty=true;}
     resize();const observer=new ResizeObserver(resize);observer.observe(canvas);
     canvas.addEventListener('pointerenter',()=>hovered=true);
@@ -317,7 +318,7 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
     canvas.addEventListener('pointerdown',e=>{dragging=true;dirty=true;px=e.clientX;py=e.clientY;canvas.setPointerCapture(e.pointerId)});
     canvas.addEventListener('pointermove',e=>{if(!dragging)return;const dx=e.clientX-px,dy=e.clientY-py;rotation=normalize(quatMultiply(trackballDelta(dx,dy),rotation));px=e.clientX;py=e.clientY;dirty=true;});
     canvas.addEventListener('pointerup',()=>{dragging=false;dirty=true});
-    canvas.addEventListener('wheel',e=>{e.preventDefault();scale=Math.min(4.2,Math.max(1.5,scale-e.deltaY*.002));dirty=true;},{passive:false});
+    canvas.addEventListener('wheel',e=>{e.preventDefault();scale=Math.min(4.2,Math.max(minimumScale,scale-e.deltaY*.002));dirty=true;},{passive:false});
     let last=performance.now(),lastRender=0;
     function frame(now){
       if(!active)return;

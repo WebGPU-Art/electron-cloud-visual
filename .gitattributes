@@ -9,3 +9,4 @@ yarn.lock -diff linguist-generated
 dist/** -diff linguist-generated
 node_modules/** -diff linguist-generated
 llms/*.md -diff linguist-generated
+src/pubchem-3d-data.js -diff linguist-generated

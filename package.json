@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "validate:molecules": "node scripts/validate-molecules.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

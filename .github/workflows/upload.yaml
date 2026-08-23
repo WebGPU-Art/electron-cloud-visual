@@ -21,6 +21,9 @@ jobs:
     - name: Install dependencies
       run: yarn install --immutable
 
+    - name: Validate 3D molecular geometry
+      run: yarn validate:molecules
+
     - name: Build Vite site
       run: yarn build
 
