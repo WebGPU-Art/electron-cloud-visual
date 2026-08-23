@@ -2,7 +2,7 @@ const shader = /* wgsl */`
 struct Uniforms { rotation: vec4f, viewport: vec2f, scale: f32, time: f32 }
 @group(0) @binding(0) var<uniform> uni: Uniforms;
 struct VertexInput { @location(0) position: vec4f, @location(1) color: vec4f }
-struct Output { @builtin(position) position: vec4f, @location(0) color: vec4f, @location(1) pointCoord: vec2f }
+struct Output { @builtin(position) position: vec4f, @location(0) color: vec4f, @location(1) pointCoord: vec2f, @location(2) nucleus: f32 }
 fn rotate(v: vec3f, q: vec4f) -> vec3f { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
 @vertex fn vs(input: VertexInput, @builtin(vertex_index) id: u32) -> Output {
   var o: Output;
@@ -10,17 +10,25 @@ fn rotate(v: vec3f, q: vec4f) -> vec3f { return v + 2.0 * cross(q.xyz, cross(q.x
   let depth = p.z + 9.0;
   let aspect = uni.viewport.x / uni.viewport.y;
   let screenPosition = vec4f(p.x / (depth * aspect) * uni.scale, p.y / depth * uni.scale, 0.5 + p.z / 30.0, 1.0);
-  let size = clamp(input.position.w * uni.scale * 13.0 / depth, 1.5, 11.0);
-  let cornerX = select(-1.0, 1.0, (id % 4u) == 1u || (id % 4u) == 2u);
+  let size = clamp(abs(input.position.w) * uni.scale * 13.0 / depth, 1.5, 13.0);
+  let cornerX = select(-1.0, 1.0, (id % 2u) == 1u);
   let cornerY = select(-1.0, 1.0, id > 1u);
   o.position = vec4f(screenPosition.xy + vec2f(cornerX, cornerY) * size * 2.0 / uni.viewport, screenPosition.zw);
   o.color = input.color;
-  o.pointCoord = vec2f(select(0.0, 1.0, (id % 4u) == 1u || (id % 4u) == 2u), select(0.0, 1.0, id > 1u));
+  o.pointCoord = vec2f(select(0.0, 1.0, (id % 2u) == 1u), select(0.0, 1.0, id > 1u));
+  o.nucleus = select(0.0, 1.0, input.position.w < 0.0);
   return o;
 }
 @fragment fn fs(input: Output) -> @location(0) vec4f {
   let centered = input.pointCoord - vec2f(.5);
   let radius2 = dot(centered, centered);
+  if (input.nucleus > .5) {
+    let radius = sqrt(radius2);
+    let edge = 1.0 - smoothstep(.36, .50, radius);
+    let core = 1.0 - smoothstep(.0, .34, radius);
+    let nucleusColor = mix(input.color.rgb * .82, vec3f(1.0, .91, .46), core * .58);
+    return vec4f(nucleusColor, edge * input.color.a);
+  }
   let a = exp(-radius2 * 11.0) * input.color.a;
   return vec4f(input.color.rgb, a);
 }`;
@@ -149,18 +157,19 @@ function prepareAtomModels(atoms, mode) {
 
 function createParticleData(atoms, mode) {
   const count=Math.min(36000,30000+atoms.length*1000), data=new Float32Array(count*8), models=prepareAtomModels(atoms,mode);
-  const nucleusCount=Math.min(180,atoms.length*28);
+  const nucleusCount=atoms.length;
   for (let i=0; i<count; i++) {
+    const isNucleus=i>=count-nucleusCount;
     let model;
-    if (i<nucleusCount) model=models[i%models.length];
+    if (isNucleus) model=models[(i-(count-nucleusCount))%models.length];
     else {
       const atomTarget=Math.random()*models[0].atomTotal;
       model=models.find((candidate)=>atomTarget<candidate.atomCumulative)||models[models.length-1];
     }
     const {atom,atomic,configuration,frontier,representativeOrbital,samplers}=model, offset=i*8;
-    if (i<nucleusCount) {
-      const radius=.035+Math.cbrt(Math.random())*(.055+Math.cbrt(atomic)*.012), direction=randomDirection();
-      data.set([atom.x+direction[0]*radius,atom.y+direction[1]*radius,atom.z+direction[2]*radius,.65+Math.random()*.45,1,.60,.18,.22],offset);
+    if (isNucleus) {
+      const nucleusSize=2.15+Math.min(.70,Math.cbrt(atomic)*.10);
+      data.set([atom.x,atom.y,atom.z,-nucleusSize,1,.52,.12,.96],offset);
       continue;
     }
     let subshell=frontier, orbital=representativeOrbital;
