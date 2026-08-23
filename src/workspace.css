@@ -58,6 +58,40 @@ main { margin-left: 0; }
 .view-switch b { font-size: 10px; }
 .view-switch small { margin-top: 3px; color: #94a0b0; font-size: 8px; }
 
+.molecule-model-card p {
+  margin: 10px 0 0;
+  color: #8a96a8;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.molecule-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.molecule-stats span {
+  padding: 9px;
+  border: 1px solid #e1e7ef;
+  color: #7b899d;
+  font-size: 9px;
+}
+
+.molecule-stats b {
+  display: block;
+  margin-bottom: 2px;
+  color: #306dcc;
+  font: 600 15px 'DM Mono';
+}
+
+.composition-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.composition-row span { padding: 4px 7px; border-radius: 10px; color: #356fc8; background: #eef5ff; font: 9px 'DM Mono'; }
+.composition-row b { margin-left: 3px; color: #8493a8; font-weight: 500; }
+
+.field-keys.molecular { grid-template-columns: repeat(3, 1fr); }
+.key-point.bond { border-radius: 1px; background: #d7e8ff; box-shadow: 0 0 5px #8cbcff; }
+
 @media (max-width: 1120px) {
   .workspace { grid-template-columns: 1fr; }
 }

@@ -2,6 +2,7 @@ import './app.css';
 import './workspace.css';
 import { elements, molecules, periodicRows } from './science-data.js';
 import { createElectronCloud } from './webgpu-cloud.js';
+import { inferBonds, molecularComposition } from './molecular-model.js';
 
 const app = document.querySelector('#app');
 const current = { kind: 'element', id: 'H', mode: 'orbital' };
@@ -21,6 +22,16 @@ function shellDistribution(electrons) {
     left -= value;
   }
   return result;
+}
+
+function formulaElectronCount(formula) {
+  const subscriptDigits={'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9'};
+  let total=0;
+  for (const match of formula.matchAll(/([A-Z][a-z]?)([₀-₉]*)/g)) {
+    const count=Number([...match[2]].map((digit)=>subscriptDigits[digit]).join('')||1);
+    total+=elementBySymbol(match[1]).atomic*count;
+  }
+  return total;
 }
 
 function cloudAtoms() {
@@ -45,10 +56,12 @@ function selectedInfo() {
       electrons: element.atomic,
       shells: shellDistribution(element.atomic),
       charge: '中性原子',
+      molecule: false,
     };
   }
   const molecule = molecules.find((item) => item.id === current.id);
-  const electronCount = molecule.atoms.reduce((sum, atom) => sum + elementBySymbol(atom.symbol).atomic, 0);
+  const electronCount = formulaElectronCount(molecule.formula);
+  const composition=molecularComposition(molecule.atoms);
   return {
     eyebrow: `常见化合物 · ${molecule.formula}`,
     name: molecule.name,
@@ -57,6 +70,10 @@ function selectedInfo() {
     electrons: electronCount,
     shells: molecule.atoms.map((atom) => elementBySymbol(atom.symbol).atomic),
     charge: molecule.geometry,
+    molecule: true,
+    atomCount: molecule.atoms.length,
+    bondCount: inferBonds(molecule.atoms,molecule.id).length,
+    composition,
   };
 }
 
@@ -70,6 +87,20 @@ function renderPeriodicTable() {
 function renderApp() {
   const info = selectedInfo();
   const orbitalMode = current.mode === 'orbital';
+  const moleculeMode = info.molecule;
+  const legendPrimary=moleculeMode?(orbitalMode?'原子轨道贡献':'原子中心密度'):(orbitalMode?'波函数正相位':'高概率密度');
+  const legendSecondary=moleculeMode?(orbitalMode?'键区 / π 电子密度':'键区总密度'):(orbitalMode?'波函数负相位':'低概率密度');
+  const captionTitle=moleculeMode?(orbitalMode?'QUALITATIVE MOLECULAR ORBITAL':'MOLECULAR ELECTRON DENSITY'):(orbitalMode?'REPRESENTATIVE VALENCE ORBITAL':'TOTAL ELECTRON DENSITY');
+  const captionCopy=moleculeMode?'LCAO 定性近似 · 亮线为分子骨架':orbitalMode?'颜色表示波函数相位，不是电荷':'所有占据轨道的概率密度之和';
+  const modelCard=moleculeMode?`
+    <div class="orbit-card molecule-model-card"><div class="orbit-card-title">分子模型 <span>${info.electrons} e⁻</span></div>
+      <div class="molecule-stats"><span><b>${info.atomCount}</b>可视原子中心</span><span><b>${info.bondCount}</b>推断键连接</span></div>
+      <div class="composition-row">${info.composition.map(({symbol,count})=>`<span>${symbol}<b>×${count}</b></span>`).join('')}</div>
+      <p>复杂分子采用可视骨架；分子式中的部分氢原子可能按结构式惯例省略。</p>
+    </div>`:`
+    <div class="orbit-card"><div class="orbit-card-title">电子层分布 <span>${info.electrons} e⁻</span></div>
+      <div class="shells">${info.shells.slice(0, 5).map((count, index) => `<div class="shell"><span>n=${index + 1}</span><i style="--fill:${Math.min(100, count / [2,8,18,32,32][index] * 100)}%"></i><b>${count}</b></div>`).join('')}</div>
+    </div>`;
   app.innerHTML = `
     <main id="top">
       <header class="topbar">
@@ -82,11 +113,11 @@ function renderApp() {
       </header>
       <section class="intro">
         <div>
-          <p class="eyebrow">ATOMIC ORBITALS / LIVE MODEL</p>
+          <p class="eyebrow">ATOMIC + MOLECULAR ORBITALS / LIVE MODEL</p>
           <h1>电子云<br><em>可视化图谱</em></h1>
-          <p class="lede">以概率密度呈现原子轨道。选择元素或分子，在空间中观察电子云的几何分布。</p>
+          <p class="lede">以概率密度呈现原子轨道，并以键区电子密度构造定性的分子轨道模型。</p>
         </div>
-        <div class="legend"><span class="legend-line hot"></span><span>${orbitalMode ? '波函数正相位' : '高概率密度'}</span><span class="legend-line cool"></span><span>${orbitalMode ? '波函数负相位' : '低概率密度'}</span></div>
+        <div class="legend"><span class="legend-line hot"></span><span>${legendPrimary}</span><span class="legend-line cool"></span><span>${legendSecondary}</span></div>
       </section>
       <section class="workspace" aria-label="3D electronic cloud">
         <div class="viewer-column">
@@ -94,7 +125,7 @@ function renderApp() {
           <canvas id="electron-canvas"></canvas>
           <div class="canvas-grid"></div>
           <div class="orientation orientation-x">X</div><div class="orientation orientation-y">Y</div><div class="orientation orientation-z">Z</div>
-          <div class="canvas-caption"><span class="pulse"></span><span>${orbitalMode ? 'REPRESENTATIVE VALENCE ORBITAL' : 'TOTAL ELECTRON DENSITY'}</span><small>${orbitalMode ? '颜色表示波函数相位，不是电荷' : '所有占据轨道的概率密度之和'} · 拖拽旋转</small></div>
+          <div class="canvas-caption"><span class="pulse"></span><span>${captionTitle}</span><small>${captionCopy} · 拖拽旋转</small></div>
           <div class="zoom-hint">SCROLL<br><b>⌁</b></div>
         </div>
         </div>
@@ -104,13 +135,11 @@ function renderApp() {
           <div class="atom-identity"><span class="atom-symbol">${info.symbol}</span><div><h2>${info.name}</h2><p>${info.charge}</p></div></div>
           <p class="inspector-copy">${info.description}</p>
           <div class="view-switch" aria-label="电子云显示模式">
-            <button class="${orbitalMode ? 'active' : ''}" data-view-mode="orbital"><b>价层轨道</b><small>观察花瓣与节点</small></button>
-            <button class="${orbitalMode ? '' : 'active'}" data-view-mode="density"><b>总电子密度</b><small>观察整体概率云</small></button>
+            <button class="${orbitalMode ? 'active' : ''}" data-view-mode="orbital"><b>${moleculeMode?'键合轨道近似':'价层轨道'}</b><small>${moleculeMode?'原子轨道 + 键区':'观察花瓣与节点'}</small></button>
+            <button class="${orbitalMode ? '' : 'active'}" data-view-mode="density"><b>${moleculeMode?'分子总密度':'总电子密度'}</b><small>观察整体概率云</small></button>
           </div>
-          <div class="orbit-card"><div class="orbit-card-title">电子层分布 <span>${info.electrons} e⁻</span></div>
-            <div class="shells">${info.shells.slice(0, 5).map((count, index) => `<div class="shell"><span>n=${index + 1}</span><i style="--fill:${Math.min(100, count / [2,8,18,32,32][index] * 100)}%"></i><b>${count}</b></div>`).join('')}</div>
-          </div>
-          <div class="field-keys"><span><i class="key-point"></i>核 / 原子中心</span><span><i class="key-point cloud"></i>${orbitalMode ? '轨道概率云' : '总概率密度'}</span></div>
+          ${modelCard}
+          <div class="field-keys ${moleculeMode?'molecular':''}"><span><i class="key-point"></i>核 / 原子中心</span>${moleculeMode?'<span><i class="key-point bond"></i>键骨架</span>':''}<span><i class="key-point cloud"></i>${moleculeMode?'键合概率云':orbitalMode?'轨道概率云':'总概率密度'}</span></div>
           </div>
           <section class="catalog compact-catalog" id="periodic">
             <div class="section-heading"><div><p class="eyebrow">SELECT A SPECIMEN</p><h2>元素周期表</h2></div><p>118 种元素</p></div>
@@ -125,7 +154,7 @@ function renderApp() {
           </section>
         </aside>
       </section>
-      <section id="guide" class="guide"><div><span>01</span><h3>轨道，不是电子轨迹</h3><p>花瓣来自单个价层轨道的角分布；空隙是波函数节点，并非电子沿花瓣运动。</p></div><div><span>02</span><h3>相位，不是电荷</h3><p>轨道模式的两种颜色表示波函数正负相位。切换总密度后，相位消失且闭壳层趋于球对称。</p></div><div><span>03</span><h3>四元数视角</h3><p>进入画布即暂停演示转动；拖拽采用轨迹球四元数旋转，滚轮可缩放。</p></div></section>
+      <section id="guide" class="guide"><div><span>01</span><h3>原子轨道组成分子轨道</h3><p>分子模式用原子轨道的线性组合近似键合，并增强两个原子核之间的共享电子密度。</p></div><div><span>02</span><h3>骨架帮助阅读云层</h3><p>亮线表示推断的原子连接；它不是电子轨迹。多重键同时展示轴向 σ 密度与轴外 π 密度。</p></div><div><span>03</span><h3>定性，而非量化计算</h3><p>复杂分子的精确轨道需要量子化学数值求解；本模型用于观察几何、节点和离域趋势。</p></div></section>
       <footer>ORBITAL ATLAS <span>构建于 WEBGPU / VITE</span><span>© 2026</span></footer>
     </main>`;
 
@@ -149,7 +178,7 @@ let destroyCloud = () => {};
 async function refresh() {
   destroyCloud();
   renderApp();
-  destroyCloud = await createElectronCloud(document.querySelector('#electron-canvas'), cloudAtoms(), { mode: current.mode });
+  destroyCloud = await createElectronCloud(document.querySelector('#electron-canvas'), cloudAtoms(), { mode: current.mode, molecule: current.kind==='molecule', moleculeId: current.id });
 }
 
 refresh();
