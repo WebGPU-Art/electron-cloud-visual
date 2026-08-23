@@ -1,0 +1,13 @@
+# Dependencies and Yarn runtime state
+node_modules/
+.pnp.*
+.yarn/
+
+# Vite output and local cache
+dist/
+.vite/
+
+# Local environment files
+.env
+.env.*
+!.env.example

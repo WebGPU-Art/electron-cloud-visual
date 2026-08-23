@@ -1,0 +1,11 @@
+
+* text=auto eol=lf
+
+# Lockfiles and tool-generated files should not inflate source diffs or stats.
+yarn.lock -diff linguist-generated
+.pnp.cjs -diff linguist-generated
+.pnp.loader.mjs -diff linguist-generated
+.yarn/** -diff linguist-generated
+dist/** -diff linguist-generated
+node_modules/** -diff linguist-generated
+llms/*.md -diff linguist-generated
