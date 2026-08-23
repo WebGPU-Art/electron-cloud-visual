@@ -4,7 +4,7 @@ const shader = /* wgsl */`
 struct Uniforms { rotation: vec4f, viewport: vec2f, scale: f32, time: f32 }
 @group(0) @binding(0) var<uniform> uni: Uniforms;
 struct VertexInput { @location(0) position: vec4f, @location(1) color: vec4f }
-struct Output { @builtin(position) position: vec4f, @location(0) color: vec4f, @location(1) pointCoord: vec2f, @location(2) kind: f32 }
+struct Output { @builtin(position) position: vec4f, @location(0) color: vec4f, @location(1) pointCoord: vec2f, @location(2) kind: f32, @location(3) depthCue: f32 }
 fn rotate(v: vec3f, q: vec4f) -> vec3f { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
 @vertex fn vs(input: VertexInput, @builtin(vertex_index) id: u32) -> Output {
   var o: Output;
@@ -14,13 +14,15 @@ fn rotate(v: vec3f, q: vec4f) -> vec3f { return v + 2.0 * cross(q.xyz, cross(q.x
   let screenPosition = vec4f(p.x / (depth * aspect) * uni.scale, p.y / depth * uni.scale, 0.5 + p.z / 30.0, 1.0);
   let isBond = input.position.w < -8.0;
   let encodedSize = select(abs(input.position.w), abs(input.position.w + 10.0), isBond);
-  let size = clamp(encodedSize * uni.scale * 13.0 / depth, 1.5, 13.0);
+  let breathing = select(1.0 + sin(uni.time * .82 + dot(input.position.xyz, vec3f(.31, .23, .17))) * .035, 1.0, input.position.w < 0.0);
+  let size = clamp(encodedSize * breathing * uni.scale * 13.0 / depth, 1.5, 13.0);
   let cornerX = select(-1.0, 1.0, (id % 2u) == 1u);
   let cornerY = select(-1.0, 1.0, id > 1u);
   o.position = vec4f(screenPosition.xy + vec2f(cornerX, cornerY) * size * 2.0 / uni.viewport, screenPosition.zw);
   o.color = input.color;
   o.pointCoord = vec2f(select(0.0, 1.0, (id % 2u) == 1u), select(0.0, 1.0, id > 1u));
   o.kind = select(0.0, select(1.0, 2.0, isBond), input.position.w < 0.0);
+  o.depthCue = clamp(.86 - p.z * .055, .56, 1.24);
   return o;
 }
 @fragment fn fs(input: Output) -> @location(0) vec4f {
@@ -28,27 +30,29 @@ fn rotate(v: vec3f, q: vec4f) -> vec3f { return v + 2.0 * cross(q.xyz, cross(q.x
   let radius2 = dot(centered, centered);
   if (input.kind > 1.5) {
     let radius = sqrt(radius2);
+    if (radius > .50) { discard; }
     let edge = 1.0 - smoothstep(.20, .50, radius);
     let core = 1.0 - smoothstep(.0, .24, radius);
-    return vec4f(input.color.rgb * (.88 + core * .30), edge * input.color.a);
+    return vec4f(input.color.rgb * (.78 + core * .24) * input.depthCue, edge * input.color.a);
   }
   if (input.kind > .5) {
     let radius = sqrt(radius2);
+    if (radius > .50) { discard; }
     let edge = 1.0 - smoothstep(.36, .50, radius);
     let core = 1.0 - smoothstep(.0, .34, radius);
-    let nucleusColor = mix(input.color.rgb * .82, vec3f(1.0, .91, .46), core * .58);
-    return vec4f(nucleusColor, edge * input.color.a);
+    let nucleusColor = mix(input.color.rgb * .78, vec3f(1.0), core * .38);
+    return vec4f(nucleusColor * input.depthCue, edge * input.color.a);
   }
-  let particleCore = exp(-radius2 * 14.0);
-  let particleHalo = exp(-radius2 * 5.2) * .28;
-  let a = min((particleCore + particleHalo) * input.color.a * 1.68, .19);
-  return vec4f(input.color.rgb * 1.12, a);
+  let particleCore = exp(-radius2 * 15.0);
+  let particleHalo = exp(-radius2 * 5.5) * .22;
+  let a = min((particleCore + particleHalo) * input.color.a * (1.05 + input.depthCue * .25), .105);
+  return vec4f(input.color.rgb * (.88 + input.depthCue * .25), a);
 }`;
 
-function quatMultiply(a, b) { return [a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1], a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0], a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3], a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]]; }
-function normalize(q) { const d=Math.hypot(...q); return q.map(v=>v/d); }
-function axisAngle(axis, angle) { const half=angle*.5, sine=Math.sin(half); return [axis[0]*sine,axis[1]*sine,axis[2]*sine,Math.cos(half)]; }
-function trackballDelta(dx, dy) {
+export function quatMultiply(a, b) { return [a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1], a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0], a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3], a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]]; }
+export function normalize(q) { const d=Math.hypot(...q); return q.map(v=>v/d); }
+export function axisAngle(axis, angle) { const half=angle*.5, sine=Math.sin(half); return [axis[0]*sine,axis[1]*sine,axis[2]*sine,Math.cos(half)]; }
+export function trackballDelta(dx, dy) {
   const distance=Math.hypot(dx,dy);
   if (!distance) return [0,0,0,1];
   // Invert the screen delta so the cloud follows the pointer instead of resisting it.
@@ -181,7 +185,7 @@ function perpendicularBasis([x,y,z]) {
   return [u,v];
 }
 
-function writeAtomicCloud(data, index, model, mode, radiusScale) {
+function writeAtomicCloud(data, index, model, mode, radiusScale, opacityScale=1) {
     const {atom,atomic,configuration,frontier,representativeOrbital,samplers}=model, offset=index*8;
     let subshell=frontier, orbital=representativeOrbital;
     if (mode==='density') {
@@ -200,7 +204,7 @@ function writeAtomicCloud(data, index, model, mode, radiusScale) {
     const phaseColor=negative
       ? [.18+(1-red)*.62,.18+(1-green)*.62,.18+(1-blue)*.62]
       : [red,green,blue];
-    data.set([atom.x+direction[0]*radius,atom.y+direction[1]*radius,atom.z+direction[2]*radius,.58+Math.random()*1.05,phaseColor[0]*variation,phaseColor[1]*variation,phaseColor[2],.020+Math.random()*.058],offset);
+    data.set([atom.x+direction[0]*radius,atom.y+direction[1]*radius,atom.z+direction[2]*radius,.58+Math.random()*1.05,phaseColor[0]*variation,phaseColor[1]*variation,phaseColor[2],(.020+Math.random()*.058)*opacityScale],offset);
 }
 
 function writeBondCloud(data, index, atoms, bond, mode) {
@@ -245,7 +249,7 @@ function createBondMarkers(atoms, bonds) {
           first.x+(second.x-first.x)*t+u[0]*lineOffset,
           first.y+(second.y-first.y)*t+u[1]*lineOffset,
           first.z+(second.z-first.z)*t+u[2]*lineOffset,
-          -10.43,color[0],color[1],color[2],.68,
+          -10.38,color[0],color[1],color[2],.46,
         ]);
       }
     }
@@ -262,7 +266,10 @@ function createParticleData(atoms, mode, {molecule=false,moleculeId='',bonds:exp
   const atomCloudCount=cloudCount-bondCloudCount;
   const radiusScale=molecule?(mode==='orbital'?.56:.48):1;
   let index=0;
-  for (; index<atomCloudCount; index++) writeAtomicCloud(data,index,chooseAtomModel(models),mode,radiusScale);
+  for (; index<atomCloudCount; index++) {
+    const model=chooseAtomModel(models), opacityScale=molecule?1:Math.min(1,.44+(model.frontier.n-1)*.18);
+    writeAtomicCloud(data,index,model,mode,radiusScale,opacityScale);
+  }
   const totalBondOrder=bonds.reduce((sum,bond)=>sum+bond.order,0);
   for (let bondIndex=0; bondIndex<bondCloudCount; bondIndex++,index++) {
     const target=Math.random()*totalBondOrder;
@@ -272,16 +279,25 @@ function createParticleData(atoms, mode, {molecule=false,moleculeId='',bonds:exp
   }
   for (const marker of markers) { data.set(marker,index*8); index++; }
   for (const model of models) {
-    const {atom,atomic}=model, nucleusSize=2.15+Math.min(.70,Math.cbrt(atomic)*.10);
-    data.set([atom.x,atom.y,atom.z,-nucleusSize,1,.52,.12,.96],index*8); index++;
+    const {atom,atomic}=model, nucleusSize=1.78+Math.min(.48,Math.cbrt(atomic)*.075);
+    const centerColor=atomColor(atom).map((value)=>Math.min(1,value*.78+.22));
+    data.set([atom.x,atom.y,atom.z,-nucleusSize,centerColor[0],centerColor[1],centerColor[2],.90],index*8); index++;
   }
-  return data;
+  return {data,cloudCount};
+}
+
+function emitCloudState(canvas, detail) {
+  canvas.dispatchEvent(new CustomEvent('cloudstate',{detail}));
 }
 
 function fallback(canvas) {
   const ctx=canvas.getContext('2d');
   const particles=Array.from({length:3600},()=>({a:Math.random()*Math.PI*2,r:Math.abs(randomNormal()),s:Math.random()*1.7+.3,c:Math.random()}));
-  const draw=()=>{const {width,height}=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio,2),size=Math.min(width,height);canvas.width=width*ratio;canvas.height=height*ratio;ctx.setTransform(ratio,0,0,ratio,0,0);ctx.fillStyle='#061022';ctx.fillRect(0,0,width,height);ctx.globalCompositeOperation='lighter';for(const p of particles){const orbit=(.06+p.r*.12)*size,stretch=.8+Math.sin(p.a*2.0)*.45,x=width*.5+Math.cos(p.a)*orbit*stretch,y=height*.5+Math.sin(p.a)*orbit*.75;ctx.fillStyle=p.c>.86?'rgba(255,140,112,.42)':`rgba(75,${150+Math.floor(p.c*80)},255,${.08+p.c*.26})`;ctx.fillRect(x,y,p.s,p.s)}ctx.beginPath();ctx.arc(width*.5,height*.5,8,0,Math.PI*2);ctx.fillStyle='rgba(255,204,103,.9)';ctx.fill();ctx.globalCompositeOperation='source-over';};draw();window.addEventListener('resize',draw);return()=>window.removeEventListener('resize',draw);}
+  const draw=()=>{const {width,height}=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio,2),size=Math.min(width,height);canvas.width=width*ratio;canvas.height=height*ratio;ctx.setTransform(ratio,0,0,ratio,0,0);ctx.fillStyle='#061022';ctx.fillRect(0,0,width,height);ctx.globalCompositeOperation='lighter';for(const p of particles){const orbit=(.06+p.r*.12)*size,stretch=.8+Math.sin(p.a*2.0)*.45,x=width*.5+Math.cos(p.a)*orbit*stretch,y=height*.5+Math.sin(p.a)*orbit*.75;ctx.fillStyle=p.c>.86?'rgba(255,140,112,.42)':`rgba(75,${150+Math.floor(p.c*80)},255,${.08+p.c*.26})`;ctx.fillRect(x,y,p.s,p.s)}ctx.beginPath();ctx.arc(width*.5,height*.5,8,0,Math.PI*2);ctx.fillStyle='rgba(255,204,103,.9)';ctx.fill();ctx.globalCompositeOperation='source-over';};
+  const reset=()=>draw();
+  draw();emitCloudState(canvas,{renderer:'CANVAS 2D',particleCount:particles.length,motion:'static',autoEnabled:false});
+  window.addEventListener('resize',draw);canvas.addEventListener('cloud:reset',reset);
+  return()=>{window.removeEventListener('resize',draw);canvas.removeEventListener('cloud:reset',reset);};}
 
 export async function createElectronCloud(canvas, atoms, {mode='orbital',molecule=false,moleculeId='',bonds}={}) {
   if (!navigator.gpu) return fallback(canvas);
@@ -292,39 +308,50 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
     const compilation=await shaderModule.getCompilationInfo();
     const shaderErrors=compilation.messages.filter((message)=>message.type==='error');
     if (shaderErrors.length) throw new Error(shaderErrors.map((message)=>message.message).join('\n'));
-    const data=createParticleData(atoms,mode,{molecule,moleculeId,bonds}); const buffer=device.createBuffer({size:data.byteLength,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(buffer,0,data);
+    const {data,cloudCount}=createParticleData(atoms,mode,{molecule,moleculeId,bonds}); const buffer=device.createBuffer({size:data.byteLength,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(buffer,0,data);
     const uniform=device.createBuffer({size:32,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
-    const pipeline=await device.createRenderPipelineAsync({
-      layout: 'auto',
-      vertex: {
-        module: shaderModule, entryPoint: 'vs',
-        buffers: [{ arrayStride: 32, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }] }]
-      },
-      fragment: {
-        module: shaderModule, entryPoint: 'fs',
-        targets: [{ format, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } } }]
-      },
-      primitive: { topology: 'triangle-strip' }
-    });
-    const bind=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:uniform}}]});
+    const bindGroupLayout=device.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.VERTEX,buffer:{type:'uniform'}}]});
+    const pipelineLayout=device.createPipelineLayout({bindGroupLayouts:[bindGroupLayout]});
+    const vertex={module:shaderModule,entryPoint:'vs',buffers:[{arrayStride:32,stepMode:'instance',attributes:[{shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32x4'}]}]};
+    const makePipeline=(blend,depthWriteEnabled,depthCompare)=>device.createRenderPipelineAsync({layout:pipelineLayout,vertex,fragment:{module:shaderModule,entryPoint:'fs',targets:[{format,blend}]},primitive:{topology:'triangle-strip'},depthStencil:{format:'depth24plus',depthWriteEnabled,depthCompare}});
+    const [cloudPipeline,solidPipeline]=await Promise.all([
+      makePipeline({color:{srcFactor:'src-alpha',dstFactor:'one',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}},false,'always'),
+      makePipeline({color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}},true,'less'),
+    ]);
+    const bind=device.createBindGroup({layout:bindGroupLayout,entries:[{binding:0,resource:{buffer:uniform}}]});
     const context = canvas.getContext('webgpu');
     const molecularExtent=Math.max(...atoms.map((atom)=>Math.hypot(atom.x,atom.y,atom.z)));
     const minimumScale=molecule?1.05:1.5;
-    let rotation=[0.14,-.17,0,.975],scale=molecule?Math.min(2.7,Math.max(1.15,6.5/(molecularExtent+1.2))):2.7,active=true,hovered=false,dragging=false,dirty=true,px=0,py=0;
-    function resize(){const box=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio,1.5);canvas.width=Math.max(1,box.width*ratio);canvas.height=Math.max(1,box.height*ratio);context.configure({device,format,alphaMode:'premultiplied'});dirty=true;}
+    const initialRotation=[0.14,-.17,0,.975],initialScale=molecule?Math.min(2.7,Math.max(1.15,6.5/(molecularExtent+1.2))):2.7;
+    let rotation=[...initialRotation],scale=initialScale,active=true,hovered=false,dragging=false,dirty=true,px=0,py=0,depthTexture;
+    let autoEnabled=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reportState=()=>emitCloudState(canvas,{renderer:'WEBGPU',particleCount:data.length/8,motion:!autoEnabled?'paused':hovered||dragging?'hover':'auto',autoEnabled});
+    function resize(){const box=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio,1.5);canvas.width=Math.max(1,box.width*ratio);canvas.height=Math.max(1,box.height*ratio);context.configure({device,format,alphaMode:'premultiplied'});depthTexture?.destroy();depthTexture=device.createTexture({size:[canvas.width,canvas.height],format:'depth24plus',usage:GPUTextureUsage.RENDER_ATTACHMENT});dirty=true;}
     resize();const observer=new ResizeObserver(resize);observer.observe(canvas);
-    canvas.addEventListener('pointerenter',()=>hovered=true);
-    canvas.addEventListener('pointerleave',()=>{hovered=false;dragging=false});
-    canvas.addEventListener('pointerdown',e=>{dragging=true;dirty=true;px=e.clientX;py=e.clientY;canvas.setPointerCapture(e.pointerId)});
+    const pointerEnter=()=>{hovered=true;reportState();};
+    const pointerLeave=()=>{hovered=false;dragging=false;reportState();};
+    const pointerDown=e=>{dragging=true;dirty=true;px=e.clientX;py=e.clientY;canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);reportState();};
+    const pointerUp=()=>{dragging=false;dirty=true;reportState();};
+    const resetView=()=>{rotation=[...initialRotation];scale=initialScale;dirty=true;};
+    const toggleAuto=()=>{autoEnabled=!autoEnabled;dirty=true;reportState();};
+    const keyDown=e=>{if(e.key.toLowerCase()==='r')resetView();if(e.key===' '){e.preventDefault();toggleAuto();}};
+    canvas.addEventListener('pointerenter',pointerEnter);
+    canvas.addEventListener('pointerleave',pointerLeave);
+    canvas.addEventListener('pointerdown',pointerDown);
     canvas.addEventListener('pointermove',e=>{if(!dragging)return;const dx=e.clientX-px,dy=e.clientY-py;rotation=normalize(quatMultiply(trackballDelta(dx,dy),rotation));px=e.clientX;py=e.clientY;dirty=true;});
-    canvas.addEventListener('pointerup',()=>{dragging=false;dirty=true});
+    canvas.addEventListener('pointerup',pointerUp);
+    canvas.addEventListener('dblclick',resetView);
+    canvas.addEventListener('keydown',keyDown);
+    canvas.addEventListener('cloud:reset',resetView);
+    canvas.addEventListener('cloud:toggle-auto',toggleAuto);
     canvas.addEventListener('wheel',e=>{e.preventDefault();scale=Math.min(4.2,Math.max(minimumScale,scale-e.deltaY*.002));dirty=true;},{passive:false});
+    reportState();
     let last=performance.now(),lastRender=0;
     function frame(now){
       if(!active)return;
       requestAnimationFrame(frame);
       if(document.hidden)return;
-      const autoRotate=!hovered;
+      const autoRotate=autoEnabled&&!hovered;
       if(!autoRotate&&!dirty)return;
       const frameInterval=dragging?22:33;
       if(now-lastRender<frameInterval)return;
@@ -334,11 +361,11 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
       const box=canvas.getBoundingClientRect();
       device.queue.writeBuffer(uniform,0,new Float32Array([...rotation,box.width,box.height,scale,now*.001]));
       const encoder=device.createCommandEncoder();
-      const pass=encoder.beginRenderPass({colorAttachments:[{view:context.getCurrentTexture().createView(),clearValue:{r:.014,g:.035,b:.078,a:1},loadOp:'clear',storeOp:'store'}]});
-      pass.setPipeline(pipeline);pass.setBindGroup(0,bind);pass.setVertexBuffer(0,buffer);pass.draw(4,data.length/8);pass.end();
+      const pass=encoder.beginRenderPass({colorAttachments:[{view:context.getCurrentTexture().createView(),clearValue:{r:.014,g:.035,b:.078,a:1},loadOp:'clear',storeOp:'store'}],depthStencilAttachment:{view:depthTexture.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});
+      pass.setBindGroup(0,bind);pass.setVertexBuffer(0,buffer);pass.setPipeline(cloudPipeline);pass.draw(4,cloudCount);pass.setPipeline(solidPipeline);pass.draw(4,data.length/8-cloudCount,0,cloudCount);pass.end();
       device.queue.submit([encoder.finish()]);
     }
     requestAnimationFrame(frame);
-    return()=>{active=false;observer.disconnect();buffer.destroy();uniform.destroy();};
+    return()=>{active=false;observer.disconnect();canvas.removeEventListener('pointerenter',pointerEnter);canvas.removeEventListener('pointerleave',pointerLeave);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('dblclick',resetView);canvas.removeEventListener('keydown',keyDown);canvas.removeEventListener('cloud:reset',resetView);canvas.removeEventListener('cloud:toggle-auto',toggleAuto);depthTexture?.destroy();buffer.destroy();uniform.destroy();};
   } catch (error) { console.warn('WebGPU unavailable',error); return fallback(canvas); }
 }

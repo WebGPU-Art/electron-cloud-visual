@@ -6,6 +6,7 @@ node_modules/
 # Vite output and local cache
 dist/
 .vite/
+.DS_Store
 
 # Local environment files
 .env
