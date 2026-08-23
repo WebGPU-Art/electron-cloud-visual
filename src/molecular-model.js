@@ -22,7 +22,11 @@ function pairKey(a, b) {
   return a < b ? `${a}-${b}` : `${b}-${a}`;
 }
 
-export function inferBonds(atoms, moleculeId='') {
+export function inferBonds(atoms, moleculeId='', explicitBonds) {
+  if (explicitBonds?.length) return explicitBonds.map(([a,b,order=1])=>{
+    const first=atoms[a], second=atoms[b];
+    return {a,b,order,distance:Math.hypot(second.x-first.x,second.y-first.y,second.z-first.z)};
+  });
   const candidates=[];
   for (let a=0; a<atoms.length; a++) {
     for (let b=a+1; b<atoms.length; b++) {

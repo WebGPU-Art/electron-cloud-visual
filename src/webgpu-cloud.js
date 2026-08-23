@@ -253,9 +253,9 @@ function createBondMarkers(atoms, bonds) {
   return markers;
 }
 
-function createParticleData(atoms, mode, {molecule=false,moleculeId=''}={}) {
+function createParticleData(atoms, mode, {molecule=false,moleculeId='',bonds:explicitBonds}={}) {
   const count=Math.min(36000,30000+atoms.length*1000), data=new Float32Array(count*8), models=prepareAtomModels(atoms,mode);
-  const bonds=molecule?inferBonds(atoms,moleculeId):[];
+  const bonds=molecule?inferBonds(atoms,moleculeId,explicitBonds):[];
   const markers=createBondMarkers(atoms,bonds), nucleusCount=atoms.length;
   const cloudCount=count-markers.length-nucleusCount;
   const bondCloudCount=bonds.length?Math.floor(cloudCount*(mode==='orbital'?.46:.32)):0;
@@ -283,7 +283,7 @@ function fallback(canvas) {
   const particles=Array.from({length:3600},()=>({a:Math.random()*Math.PI*2,r:Math.abs(randomNormal()),s:Math.random()*1.7+.3,c:Math.random()}));
   const draw=()=>{const {width,height}=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio,2),size=Math.min(width,height);canvas.width=width*ratio;canvas.height=height*ratio;ctx.setTransform(ratio,0,0,ratio,0,0);ctx.fillStyle='#061022';ctx.fillRect(0,0,width,height);ctx.globalCompositeOperation='lighter';for(const p of particles){const orbit=(.06+p.r*.12)*size,stretch=.8+Math.sin(p.a*2.0)*.45,x=width*.5+Math.cos(p.a)*orbit*stretch,y=height*.5+Math.sin(p.a)*orbit*.75;ctx.fillStyle=p.c>.86?'rgba(255,140,112,.42)':`rgba(75,${150+Math.floor(p.c*80)},255,${.08+p.c*.26})`;ctx.fillRect(x,y,p.s,p.s)}ctx.beginPath();ctx.arc(width*.5,height*.5,8,0,Math.PI*2);ctx.fillStyle='rgba(255,204,103,.9)';ctx.fill();ctx.globalCompositeOperation='source-over';};draw();window.addEventListener('resize',draw);return()=>window.removeEventListener('resize',draw);}
 
-export async function createElectronCloud(canvas, atoms, {mode='orbital',molecule=false,moleculeId=''}={}) {
+export async function createElectronCloud(canvas, atoms, {mode='orbital',molecule=false,moleculeId='',bonds}={}) {
   if (!navigator.gpu) return fallback(canvas);
   try {
     const adapter = await navigator.gpu.requestAdapter({powerPreference:'high-performance'}); const device = await adapter?.requestDevice(); if (!device) return fallback(canvas);
@@ -292,7 +292,7 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
     const compilation=await shaderModule.getCompilationInfo();
     const shaderErrors=compilation.messages.filter((message)=>message.type==='error');
     if (shaderErrors.length) throw new Error(shaderErrors.map((message)=>message.message).join('\n'));
-    const data=createParticleData(atoms,mode,{molecule,moleculeId}); const buffer=device.createBuffer({size:data.byteLength,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(buffer,0,data);
+    const data=createParticleData(atoms,mode,{molecule,moleculeId,bonds}); const buffer=device.createBuffer({size:data.byteLength,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});device.queue.writeBuffer(buffer,0,data);
     const uniform=device.createBuffer({size:32,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
     const pipeline=await device.createRenderPipelineAsync({
       layout: 'auto',

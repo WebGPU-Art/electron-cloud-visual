@@ -72,7 +72,7 @@ function selectedInfo() {
     charge: molecule.geometry,
     molecule: true,
     atomCount: molecule.atoms.length,
-    bondCount: inferBonds(molecule.atoms,molecule.id).length,
+    bondCount: inferBonds(molecule.atoms,molecule.id,molecule.bonds).length,
     composition,
   };
 }
@@ -147,7 +147,7 @@ function renderApp() {
             <div class="lanthanide-note">镧系 <span>La–Lu</span>　锕系 <span>Ac–Lr</span></div>
           </section>
           <section class="molecules compact-molecules" id="molecules">
-            <div class="section-heading"><div><p class="eyebrow">MOLECULAR LIBRARY</p><h2>常见化合物</h2></div></div>
+            <div class="section-heading"><div><p class="eyebrow">MOLECULAR LIBRARY</p><h2>常见化合物</h2></div><p>${molecules.length} 种模型</p></div>
             <div class="molecule-grid">
           ${molecules.map((molecule) => `<button class="molecule-card ${current.kind === 'molecule' && current.id === molecule.id ? 'active' : ''}" data-molecule="${molecule.id}"><span>${molecule.formula}</span><b>${molecule.name}</b><small>${molecule.geometry}</small><i>→</i></button>`).join('')}
             </div>
@@ -178,7 +178,8 @@ let destroyCloud = () => {};
 async function refresh() {
   destroyCloud();
   renderApp();
-  destroyCloud = await createElectronCloud(document.querySelector('#electron-canvas'), cloudAtoms(), { mode: current.mode, molecule: current.kind==='molecule', moleculeId: current.id });
+  const selectedMolecule=current.kind==='molecule'?molecules.find((item)=>item.id===current.id):null;
+  destroyCloud = await createElectronCloud(document.querySelector('#electron-canvas'), cloudAtoms(), { mode: current.mode, molecule: Boolean(selectedMolecule), moleculeId: current.id, bonds: selectedMolecule?.bonds });
 }
 
 refresh();
