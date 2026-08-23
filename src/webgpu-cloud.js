@@ -29,8 +29,10 @@ fn rotate(v: vec3f, q: vec4f) -> vec3f { return v + 2.0 * cross(q.xyz, cross(q.x
     let nucleusColor = mix(input.color.rgb * .82, vec3f(1.0, .91, .46), core * .58);
     return vec4f(nucleusColor, edge * input.color.a);
   }
-  let a = exp(-radius2 * 11.0) * input.color.a;
-  return vec4f(input.color.rgb, a);
+  let particleCore = exp(-radius2 * 14.0);
+  let particleHalo = exp(-radius2 * 5.2) * .28;
+  let a = min((particleCore + particleHalo) * input.color.a * 1.68, .19);
+  return vec4f(input.color.rgb * 1.12, a);
 }`;
 
 function quatMultiply(a, b) { return [a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1], a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0], a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3], a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]]; }
