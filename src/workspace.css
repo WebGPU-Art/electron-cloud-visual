@@ -1,0 +1,69 @@
+main { margin-left: 0; }
+
+.topbar {
+  display: grid;
+  grid-template-columns: 210px 1fr auto;
+  gap: 24px;
+}
+
+.top-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #0a1b34;
+  text-decoration: none;
+  font: 700 10px 'DM Mono';
+  letter-spacing: 1.8px;
+}
+
+.top-brand em { color: #3677db; font-style: normal; }
+.top-brand .brand-mark { width: 25px; height: 25px; }
+.top-brand .brand-mark i { top: 10px; left: 10px; }
+.top-brand .brand-mark i:nth-child(2) { width: 20px; height: 20px; }
+.top-brand .brand-mark i:nth-child(3) { top: 6px; width: 26px; height: 11px; }
+
+.intro, .workspace, .guide { max-width: 1600px; }
+.workspace { grid-template-columns: minmax(580px, 1.55fr) minmax(380px, .7fr); }
+
+.view-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 4px;
+  border: 1px solid #dfe5ed;
+  border-radius: 7px;
+  background: #f4f6f9;
+}
+
+.view-switch button {
+  padding: 9px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #7b899e;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.view-switch button.active {
+  border-color: #bfd5f6;
+  color: #225dbb;
+  background: #fff;
+  box-shadow: 0 3px 10px #345f9c14;
+}
+
+.view-switch b,
+.view-switch small { display: block; }
+.view-switch b { font-size: 10px; }
+.view-switch small { margin-top: 3px; color: #94a0b0; font-size: 8px; }
+
+@media (max-width: 1120px) {
+  .workspace { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .topbar { grid-template-columns: 1fr auto; gap: 12px; }
+  .breadcrumb { display: none; }
+  .top-brand > span:last-child { display: none; }
+}
