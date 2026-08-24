@@ -1,7 +1,7 @@
 import './app.css';
 import './workspace.css';
 import { elements, molecules, periodicRows } from './science-data.js';
-import { createElectronCloud } from './webgpu-cloud.js';
+import { createElectronCloud, rendererSupportsAutoRotation } from './webgpu-cloud.js';
 import { inferBonds, molecularComposition } from './molecular-model.js';
 
 const app = document.querySelector('#app');
@@ -127,7 +127,7 @@ function renderApp() {
           <canvas id="electron-canvas" tabindex="0" aria-label="电子云三维画布；拖拽旋转，滚轮缩放，空格暂停，R 复位"></canvas>
           <div class="canvas-grid"></div>
           <div class="canvas-toolbar" role="group" aria-label="三维视图控制">
-            <button id="toggle-rotation" type="button" aria-pressed="false"><i></i><b>AUTO</b><span>旋转</span></button>
+            <button id="toggle-rotation" type="button" aria-pressed="false" disabled><i></i><b>WAIT</b><span>旋转</span></button>
             <button id="reset-view" type="button"><b>⌖</b><span>复位</span></button>
           </div>
           <div class="orientation orientation-x">X</div><div class="orientation orientation-y">Y</div><div class="orientation orientation-z">Z</div>
@@ -183,8 +183,10 @@ function renderApp() {
   const rendererLabel=app.querySelector('[data-renderer]'),pointsLabel=app.querySelector('[data-points]'),motionLabel=app.querySelector('[data-motion]');
   canvas.addEventListener('cloudstate',({detail})=>{
     const motionText={auto:'AUTO ROTATE',hover:'HOVER HOLD',paused:'PAUSED',static:'STATIC'}[detail.motion]||detail.motion;
+    const supportsAuto=rendererSupportsAutoRotation(detail.renderer);
     rendererLabel.textContent=detail.renderer;pointsLabel.textContent=`${Math.round(detail.particleCount/1000)}K PTS`;motionLabel.textContent=motionText;
-    rotationButton.classList.toggle('paused',!detail.autoEnabled);rotationButton.setAttribute('aria-pressed',String(!detail.autoEnabled));rotationButton.querySelector('b').textContent=detail.autoEnabled?'AUTO':'HOLD';
+    rotationButton.disabled=!supportsAuto;rotationButton.classList.toggle('paused',supportsAuto&&!detail.autoEnabled);rotationButton.setAttribute('aria-pressed',String(supportsAuto&&!detail.autoEnabled));rotationButton.querySelector('b').textContent=supportsAuto?(detail.autoEnabled?'AUTO':'HOLD'):'STATIC';
+    rotationButton.title=supportsAuto?'暂停或恢复自动旋转':'当前渲染器不支持自动旋转';
   });
   rotationButton.addEventListener('click',()=>canvas.dispatchEvent(new CustomEvent('cloud:toggle-auto')));
   resetButton.addEventListener('click',()=>canvas.dispatchEvent(new CustomEvent('cloud:reset')));

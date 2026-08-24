@@ -1,4 +1,4 @@
-import { normalize, quatMultiply, trackballDelta } from '../src/webgpu-cloud.js';
+import { keyboardCommand, normalize, quatMultiply, rendererSupportsAutoRotation, trackballDelta } from '../src/webgpu-cloud.js';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -28,4 +28,11 @@ for (let index=0; index<4000; index++) {
 assert(Math.abs(quaternionLength(accumulated)-1)<1e-12,'accumulated trackball rotation must remain normalized');
 assert(accumulated.every(Number.isFinite),'accumulated rotation must remain finite');
 
-console.log(`PASS quaternion trackball norm=${quaternionLength(accumulated).toFixed(12)} clamp=${clampedAngle.toFixed(3)}rad direction=screen-follow`);
+assert(keyboardCommand({key:' ',code:'Space',repeat:false})==='toggle-auto','Space must toggle auto rotation');
+assert(keyboardCommand({key:'r',code:'KeyR',repeat:false})==='reset','R must reset the view');
+assert(keyboardCommand({key:' ',code:'Space',repeat:true})===null,'repeated Space must not toggle auto rotation');
+assert(keyboardCommand({key:'r',code:'KeyR',repeat:true})===null,'repeated R must not reset the view');
+assert(rendererSupportsAutoRotation('WEBGPU'),'WebGPU must expose auto rotation');
+assert(!rendererSupportsAutoRotation('CANVAS 2D'),'Canvas 2D fallback must disable auto rotation');
+
+console.log(`PASS interaction trackball=${quaternionLength(accumulated).toFixed(12)} clamp=${clampedAngle.toFixed(3)}rad keyboard=no-repeat`);

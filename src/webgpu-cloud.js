@@ -58,6 +58,15 @@ export function trackballDelta(dx, dy) {
   // Invert the screen delta so the cloud follows the pointer instead of resisting it.
   return axisAngle([-dy/distance,-dx/distance,0],Math.min(distance*.009,.32));
 }
+export function keyboardCommand({key='',code='',repeat=false}) {
+  if (repeat) return null;
+  if (key.toLowerCase()==='r') return 'reset';
+  if (key===' '||code==='Space') return 'toggle-auto';
+  return null;
+}
+export function rendererSupportsAutoRotation(renderer) {
+  return renderer==='WEBGPU';
+}
 function randomNormal() { let a=0,b=0; while(!a)a=Math.random(); while(!b)b=Math.random(); return Math.sqrt(-2*Math.log(a))*Math.cos(2*Math.PI*b); }
 
 const elementColors = {
@@ -334,7 +343,7 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
     const pointerUp=()=>{dragging=false;dirty=true;reportState();};
     const resetView=()=>{rotation=[...initialRotation];scale=initialScale;dirty=true;};
     const toggleAuto=()=>{autoEnabled=!autoEnabled;dirty=true;reportState();};
-    const keyDown=e=>{if(e.key.toLowerCase()==='r')resetView();if(e.key===' '){e.preventDefault();toggleAuto();}};
+    const keyDown=e=>{const command=keyboardCommand(e);if(command==='reset')resetView();if(command==='toggle-auto'){e.preventDefault();toggleAuto();}};
     canvas.addEventListener('pointerenter',pointerEnter);
     canvas.addEventListener('pointerleave',pointerLeave);
     canvas.addEventListener('pointerdown',pointerDown);

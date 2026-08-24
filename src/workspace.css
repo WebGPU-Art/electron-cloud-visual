@@ -122,6 +122,8 @@ main { margin-left: 0; }
 
 .canvas-toolbar button:hover,
 .canvas-toolbar button:focus-visible { border-color: #67cce999; color: #d4f6ff; background: #102847e6; outline: 0; }
+.canvas-toolbar button:disabled { border-color: #40536b33; color: #52667f; background: #08132699; cursor: not-allowed; opacity: .68; }
+.canvas-toolbar button:disabled:hover { border-color: #40536b33; color: #52667f; background: #08132699; }
 .canvas-toolbar button i { width: 5px; height: 5px; border-radius: 50%; background: #66ecd8; box-shadow: 0 0 8px #66ecd8; }
 .canvas-toolbar button.paused i { background: #ffb866; box-shadow: 0 0 8px #ffb866; }
 .canvas-toolbar button b { color: #d0e9ff; font: 500 8px 'DM Mono'; }
