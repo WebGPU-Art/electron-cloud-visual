@@ -24,6 +24,9 @@ jobs:
     - name: Validate 3D molecular geometry
       run: yarn validate:molecules
 
+    - name: Validate quaternion interaction
+      run: yarn validate:interaction
+
     - name: Build Vite site
       run: yarn build
 

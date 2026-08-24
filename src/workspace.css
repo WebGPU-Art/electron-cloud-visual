@@ -92,6 +92,66 @@ main { margin-left: 0; }
 .field-keys.molecular { grid-template-columns: repeat(3, 1fr); }
 .key-point.bond { border-radius: 1px; background: #d7e8ff; box-shadow: 0 0 5px #8cbcff; }
 
+#electron-canvas:focus-visible { outline: 1px solid #68c8ff; outline-offset: -3px; }
+
+.canvas-toolbar {
+  position: absolute;
+  z-index: 4;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  gap: 6px;
+}
+
+.canvas-toolbar button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 29px;
+  padding: 0 9px;
+  border: 1px solid #5a8bc344;
+  border-radius: 4px;
+  color: #82a6d2;
+  background: #07162dba;
+  backdrop-filter: blur(8px);
+  font: 8px 'DM Mono';
+  letter-spacing: .7px;
+  cursor: pointer;
+  transition: border-color .18s, color .18s, background .18s;
+}
+
+.canvas-toolbar button:hover,
+.canvas-toolbar button:focus-visible { border-color: #67cce999; color: #d4f6ff; background: #102847e6; outline: 0; }
+.canvas-toolbar button:disabled { border-color: #40536b33; color: #52667f; background: #08132699; cursor: not-allowed; opacity: .68; }
+.canvas-toolbar button:disabled:hover { border-color: #40536b33; color: #52667f; background: #08132699; }
+.canvas-toolbar button i { width: 5px; height: 5px; border-radius: 50%; background: #66ecd8; box-shadow: 0 0 8px #66ecd8; }
+.canvas-toolbar button.paused i { background: #ffb866; box-shadow: 0 0 8px #ffb866; }
+.canvas-toolbar button b { color: #d0e9ff; font: 500 8px 'DM Mono'; }
+.canvas-toolbar button span { color: #6683a8; }
+
+.render-status {
+  position: absolute;
+  z-index: 4;
+  right: 18px;
+  bottom: 83px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border: 1px solid #365b8744;
+  border-radius: 3px;
+  color: #7899be;
+  background: #07162ca8;
+  backdrop-filter: blur(7px);
+  font: 7px 'DM Mono';
+  letter-spacing: .6px;
+  pointer-events: none;
+}
+
+.render-status i { width: 4px; height: 4px; border-radius: 50%; background: #68e9d1; box-shadow: 0 0 7px #68e9d1; }
+.render-status em { padding-left: 7px; border-left: 1px solid #355274; color: #5f82aa; font-style: normal; }
+.render-status b { color: #a8c7eb; font-weight: 500; }
+
 @media (max-width: 1120px) {
   .workspace { grid-template-columns: 1fr; }
 }
@@ -100,4 +160,6 @@ main { margin-left: 0; }
   .topbar { grid-template-columns: 1fr auto; gap: 12px; }
   .breadcrumb { display: none; }
   .top-brand > span:last-child { display: none; }
+  .canvas-toolbar button span { display: none; }
+  .render-status { right: 12px; bottom: 72px; }
 }
