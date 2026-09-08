@@ -269,7 +269,10 @@ function writeBondCloud(data, index, atoms, bond, mode) {
   const phaseColor=mode==='orbital'&&phase<0
     ? baseColor.map((value)=>.18+(1-value)*.62)
     : baseColor.map((value)=>value*.72+.28);
-  data.set([x,y,z,.50+Math.random()*.72,phaseColor[0],phaseColor[1],phaseColor[2],.030+Math.random()*.052],offset);
+  // A fixed particle budget is shared by all bonds: avoid overexposing tiny
+  // molecules while keeping each bond legible in larger structures.
+  const visibility=Math.min(1.7,.06*atoms.length);
+  data.set([x,y,z,.50+Math.random()*.72,phaseColor[0],phaseColor[1],phaseColor[2],(.030+Math.random()*.052)*visibility],offset);
 }
 
 function createBondMarkers(atoms, bonds) {
@@ -318,7 +321,7 @@ function createParticleData(atoms, mode, {molecule=false,moleculeId='',bonds:exp
   const radiusScale=molecule?(mode==='orbital'?.56:.48):1;
   let index=0;
   for (; index<atomCloudCount; index++) {
-    const model=chooseAtomModel(models), opacityScale=molecule?1.35:Math.min(1,.44+(model.frontier.n-1)*.18);
+    const model=chooseAtomModel(models), opacityScale=molecule?Math.min(2.8,.8+Math.sqrt(atoms.length)*.35):Math.min(1,.44+(model.frontier.n-1)*.18);
     writeAtomicCloud(data,index,model,mode,radiusScale,opacityScale);
   }
   const totalBondOrder=bonds.reduce((sum,bond)=>sum+bond.order,0);
@@ -355,6 +358,21 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
   try {
     const adapter = await navigator.gpu.requestAdapter({powerPreference:'high-performance'}); const device = await adapter?.requestDevice(); if (!device) return fallback(canvas);
     const format=navigator.gpu.getPreferredCanvasFormat();
+    const resolveModule=device.createShaderModule({code:`
+      @group(0) @binding(0) var cloud: texture_2d<f32>;
+      @vertex fn vs(@builtin(vertex_index) id:u32)->@builtin(position) vec4f {
+        let p=array<vec2f,3>(vec2f(-1.,-1.),vec2f(3.,-1.),vec2f(-1.,3.));
+        return vec4f(p[id],0.,1.);
+      }
+      @fragment fn fs(@builtin(position) p:vec4f)->@location(0) vec4f {
+        let c=textureLoad(cloud,vec2i(p.xy),0).rgb*1.5;
+        let peak=max(c.r,max(c.g,c.b));
+        let mapped=c*(.92/(.92+peak));
+        return vec4f(vec3f(.014,.035,.078)+mapped*.90,1.);
+      }`});
+    // Floating-point accumulation followed by hue-preserving compression keeps
+    // dense clouds colorful instead of clipping each channel to white.
+    const resolvePipeline=await device.createRenderPipelineAsync({layout:'auto',vertex:{module:resolveModule,entryPoint:'vs'},fragment:{module:resolveModule,entryPoint:'fs',targets:[{format}]},primitive:{topology:'triangle-list'}});
     const shaderModule=device.createShaderModule({code:shader});
     const compilation=await shaderModule.getCompilationInfo();
     const shaderErrors=compilation.messages.filter((message)=>message.type==='error');
@@ -364,7 +382,7 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
     const bindGroupLayout=device.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.VERTEX,buffer:{type:'uniform'}}]});
     const pipelineLayout=device.createPipelineLayout({bindGroupLayouts:[bindGroupLayout]});
     const vertex={module:shaderModule,entryPoint:'vs',buffers:[{arrayStride:32,stepMode:'instance',attributes:[{shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32x4'}]}]};
-    const makePipeline=(blend,depthWriteEnabled,depthCompare)=>device.createRenderPipelineAsync({layout:pipelineLayout,vertex,fragment:{module:shaderModule,entryPoint:'fs',targets:[{format,blend}]},primitive:{topology:'triangle-strip'},depthStencil:{format:'depth24plus',depthWriteEnabled,depthCompare}});
+    const makePipeline=(blend,depthWriteEnabled,depthCompare)=>device.createRenderPipelineAsync({layout:pipelineLayout,vertex,fragment:{module:shaderModule,entryPoint:'fs',targets:[{format:depthWriteEnabled?format:'rgba16float',blend}]},primitive:{topology:'triangle-strip'},depthStencil:{format:'depth24plus',depthWriteEnabled,depthCompare}});
     const [cloudPipeline,solidPipeline]=await Promise.all([
       makePipeline({color:{srcFactor:'src-alpha',dstFactor:'one',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}},false,'always'),
       makePipeline({color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}},true,'less'),
@@ -374,11 +392,13 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
     const molecularExtent=Math.max(...atoms.map((atom)=>Math.hypot(atom.x,atom.y,atom.z)));
     const minimumScale=molecule?1.05:1.5;
     const initialRotation=molecule?normalize([0.14,-.17,0,.975]):axisAngle([0,1,0],Math.PI/4),initialScale=molecule?Math.min(2.7,Math.max(1.15,6.5/(molecularExtent+1.2))):2.7;
-    let rotation=[...initialRotation],scale=initialScale,active=true,hovered=false,dragging=false,dirty=true,px=0,py=0,depthTexture;
+    let rotation=[...initialRotation],scale=initialScale,active=true,hovered=false,dragging=false,dirty=true,px=0,py=0,depthTexture,cloudTexture,resolveBind;
     let autoEnabled=!matchMedia('(prefers-reduced-motion: reduce)').matches;
     const reportState=()=>emitCloudState(canvas,{renderer:'WEBGPU',particleCount:data.length/8,motion:!autoEnabled?'paused':hovered||dragging?'hover':'auto',autoEnabled});
     function resize(){const box=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio,1.5);canvas.width=Math.max(1,box.width*ratio);canvas.height=Math.max(1,box.height*ratio);context.configure({device,format,alphaMode:'premultiplied'});depthTexture?.destroy();depthTexture=device.createTexture({size:[canvas.width,canvas.height],format:'depth24plus',usage:GPUTextureUsage.RENDER_ATTACHMENT});dirty=true;}
-    resize();const observer=new ResizeObserver(resize);observer.observe(canvas);
+    function resizeCloud(){cloudTexture?.destroy();cloudTexture=device.createTexture({size:[canvas.width,canvas.height],format:'rgba16float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});resolveBind=device.createBindGroup({layout:resolvePipeline.getBindGroupLayout(0),entries:[{binding:0,resource:cloudTexture.createView()}]});}
+    const resizeAll=()=>{resize();resizeCloud();};
+    resizeAll();const observer=new ResizeObserver(resizeAll);observer.observe(canvas);
     const pointerEnter=()=>{hovered=true;reportState();};
     const pointerLeave=()=>{hovered=false;dragging=false;reportState();};
     const pointerDown=e=>{dragging=true;dirty=true;px=e.clientX;py=e.clientY;canvas.focus({preventScroll:true});canvas.setPointerCapture(e.pointerId);reportState();};
@@ -412,11 +432,16 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
       const box=canvas.getBoundingClientRect();
       device.queue.writeBuffer(uniform,0,new Float32Array([...rotation,box.width,box.height,scale,now*.001]));
       const encoder=device.createCommandEncoder();
-      const pass=encoder.beginRenderPass({colorAttachments:[{view:context.getCurrentTexture().createView(),clearValue:{r:.014,g:.035,b:.078,a:1},loadOp:'clear',storeOp:'store'}],depthStencilAttachment:{view:depthTexture.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});
-      pass.setBindGroup(0,bind);pass.setVertexBuffer(0,buffer);pass.setPipeline(cloudPipeline);pass.draw(4,cloudCount);pass.setPipeline(solidPipeline);pass.draw(4,data.length/8-cloudCount,0,cloudCount);pass.end();
+      const pass=encoder.beginRenderPass({colorAttachments:[{view:cloudTexture.createView(),clearValue:{r:0,g:0,b:0,a:0},loadOp:'clear',storeOp:'store'}],depthStencilAttachment:{view:depthTexture.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});
+      pass.setBindGroup(0,bind);pass.setVertexBuffer(0,buffer);pass.setPipeline(cloudPipeline);pass.draw(4,cloudCount);pass.end();
+      const outputView=context.getCurrentTexture().createView();
+      const resolve=encoder.beginRenderPass({colorAttachments:[{view:outputView,loadOp:'clear',storeOp:'store'}]});
+      resolve.setPipeline(resolvePipeline);resolve.setBindGroup(0,resolveBind);resolve.draw(3);resolve.end();
+      const solids=encoder.beginRenderPass({colorAttachments:[{view:outputView,loadOp:'load',storeOp:'store'}],depthStencilAttachment:{view:depthTexture.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});
+      solids.setBindGroup(0,bind);solids.setVertexBuffer(0,buffer);solids.setPipeline(solidPipeline);solids.draw(4,data.length/8-cloudCount,0,cloudCount);solids.end();
       device.queue.submit([encoder.finish()]);
     }
     requestAnimationFrame(frame);
-    return()=>{active=false;observer.disconnect();canvas.removeEventListener('pointerenter',pointerEnter);canvas.removeEventListener('pointerleave',pointerLeave);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('dblclick',resetView);canvas.removeEventListener('keydown',keyDown);canvas.removeEventListener('cloud:reset',resetView);canvas.removeEventListener('cloud:toggle-auto',toggleAuto);depthTexture?.destroy();buffer.destroy();uniform.destroy();};
+    return()=>{active=false;observer.disconnect();canvas.removeEventListener('pointerenter',pointerEnter);canvas.removeEventListener('pointerleave',pointerLeave);canvas.removeEventListener('pointerdown',pointerDown);canvas.removeEventListener('pointerup',pointerUp);canvas.removeEventListener('dblclick',resetView);canvas.removeEventListener('keydown',keyDown);canvas.removeEventListener('cloud:reset',resetView);canvas.removeEventListener('cloud:toggle-auto',toggleAuto);depthTexture?.destroy();cloudTexture?.destroy();buffer.destroy();uniform.destroy();};
   } catch (error) { console.warn('WebGPU unavailable',error); return fallback(canvas); }
 }
