@@ -96,6 +96,12 @@ function electronConfiguration(atomicNumber) {
     configuration.push({n,l,electrons,cumulative});
     remaining -= electrons;
   }
+  // Chromium's measured ground configuration is [Ar] 3d5 4s1 (NIST).
+  if(atomicNumber===24){
+    configuration.find(s=>s.n===4&&s.l===0).electrons=1;
+    configuration.find(s=>s.n===3&&s.l===2).electrons=5;
+    let sum=0;for(const shell of configuration){sum+=shell.electrons;shell.cumulative=sum;}
+  }
   return configuration;
 }
 
@@ -158,13 +164,12 @@ function angularProbability(direction, l, orbital) {
   return Math.min(1,amplitude*amplitude);
 }
 
-function sampleDirection(l, orbital) {
-  let direction = randomDirection();
-  for (let attempt=0; attempt<24; attempt++) {
-    direction = randomDirection();
+export function sampleDirection(l, orbital) {
+  // Rejection sampling must never admit a rejected point into a nodal region.
+  for (;;) {
+    const direction = randomDirection();
     if (Math.random() <= angularProbability(direction,l,orbital)) return direction;
   }
-  return direction;
 }
 
 function prepareAtomModels(atoms, mode) {
@@ -194,6 +199,25 @@ function perpendicularBasis([x,y,z]) {
   return [u,v];
 }
 
+export function bondFrame(atoms,bond,bonds) {
+  const a=atoms[bond.a],b=atoms[bond.b];
+  const axis=normalize([b.x-a.x,b.y-a.y,b.z-a.z]);
+  const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  let normal=null,strength=1e-8;
+  for(const center of [bond.a,bond.b]) {
+    const neighbors=bonds.flatMap(edge=>edge.a===center?[edge.b]:edge.b===center?[edge.a]:[]).sort((a,b)=>a-b);
+    for(const neighbor of neighbors) {
+      if(neighbor===bond.a||neighbor===bond.b)continue;
+      const p=atoms[neighbor],origin=atoms[center];
+      const candidate=cross(axis,normalize([p.x-origin.x,p.y-origin.y,p.z-origin.z]));
+      const length=Math.hypot(...candidate);
+      if(length>strength+1e-8){strength=length;normal=candidate.map(v=>v/length);}
+    }
+  }
+  if(!normal){const [u,v]=perpendicularBasis(axis);return {u,v,axial:true};}
+  return {u:cross(normal,axis),v:normal,axial:false};
+}
+
 function writeAtomicCloud(data, index, model, mode, radiusScale, opacityScale=1) {
     const {atom,atomic,configuration,frontier,representativeOrbital,samplers}=model, offset=index*8;
     let subshell=frontier, orbital=representativeOrbital;
@@ -206,8 +230,11 @@ function writeAtomicCloud(data, index, model, mode, radiusScale, opacityScale=1)
     const key=`${subshell.n}:${subshell.l}`;
     if (!samplers.has(key)) samplers.set(key,makeRadialSampler(subshell.n,subshell.l));
     const radialSample=samplers.get(key)(), radius=radialSample.radius*radiusScale, radialPhase=radialSample.phase;
-    const direction=sampleDirection(subshell.l,orbital);
-    const angularPhase=Math.sign(angularAmplitude(direction,subshell.l,orbital))||1;
+    const localFrame=mode==='orbital'?model.frame:null;
+    const sampledOrbital=localFrame?2:orbital;
+    let direction=sampleDirection(subshell.l,sampledOrbital);
+    const angularPhase=Math.sign(angularAmplitude(direction,subshell.l,sampledOrbital))||1;
+    if(localFrame){const {u,v,w}=localFrame;direction=direction.map((_,i)=>u[i]*direction[0]+v[i]*direction[1]+w[i]*direction[2]);}
     const [red,green,blue]=atomColor(atom), variation=.82+Math.random()*.18;
     const negative=mode==='orbital'&&radialPhase*angularPhase<0;
     const phaseColor=negative
@@ -218,15 +245,21 @@ function writeAtomicCloud(data, index, model, mode, radiusScale, opacityScale=1)
 
 function writeBondCloud(data, index, atoms, bond, mode) {
   const first=atoms[bond.a], second=atoms[bond.b], offset=index*8;
-  const axis=[(second.x-first.x)/bond.distance,(second.y-first.y)/bond.distance,(second.z-first.z)/bond.distance];
-  const [u,v]=perpendicularBasis(axis);
-  const t=Math.max(.04,Math.min(.96,.5+randomNormal()*.24));
+  const {u,v,axial}=bond.frame;
+  let t;
+  do {t=.5+randomNormal()*.24;} while(t<.04||t>.96);
   let radialU=randomNormal()*.16, radialV=randomNormal()*.16;
   const piOrbital=bond.order>1.2&&Math.random()<.52;
   let phase=1;
   if (piOrbital) {
     phase=Math.random()<.5?-1:1;
-    radialV+=phase*(.27+Math.abs(randomNormal())*.10);
+    if(axial||bond.order>=2.6) {
+      const angle=Math.random()*Math.PI*2,r=.27+Math.abs(randomNormal())*.10;
+      radialU=r*Math.cos(angle);radialV=r*Math.sin(angle);
+    } else {
+      // p-like probability: y² exp(-y² / 2σ²), with a genuine node at y=0.
+      radialV=phase*.23*Math.hypot(randomNormal(),randomNormal(),randomNormal());
+    }
   }
   const x=first.x+(second.x-first.x)*t+u[0]*radialU+v[0]*radialV;
   const y=first.y+(second.y-first.y)*t+u[1]*radialU+v[1]*radialV;
@@ -269,6 +302,15 @@ function createBondMarkers(atoms, bonds) {
 function createParticleData(atoms, mode, {molecule=false,moleculeId='',bonds:explicitBonds}={}) {
   const count=Math.min(36000,30000+atoms.length*1000), data=new Float32Array(count*8), models=prepareAtomModels(atoms,mode);
   const bonds=molecule?inferBonds(atoms,moleculeId,explicitBonds):[];
+  for(const bond of bonds)bond.frame=bondFrame(atoms,bond,bonds);
+  for(const model of models) {
+    if(model.frontier.l!==1)continue;
+    const index=atoms.indexOf(model.atom),attached=bonds.filter(b=>b.a===index||b.b===index);
+    const bond=attached.find(b=>b.order>1.2&&!b.frame.axial)||attached[0];
+    if(!bond)continue;
+    const a=atoms[bond.a],b=atoms[bond.b],axis=normalize([b.x-a.x,b.y-a.y,b.z-a.z]);
+    model.frame=bond.order>1.2&&!bond.frame.axial?{u:axis,v:bond.frame.u,w:bond.frame.v}:{u:bond.frame.u,v:bond.frame.v,w:axis};
+  }
   const markers=createBondMarkers(atoms,bonds), nucleusCount=atoms.length;
   const cloudCount=count-markers.length-nucleusCount;
   const bondCloudCount=bonds.length?Math.floor(cloudCount*(mode==='orbital'?.46:.32)):0;
@@ -276,7 +318,7 @@ function createParticleData(atoms, mode, {molecule=false,moleculeId='',bonds:exp
   const radiusScale=molecule?(mode==='orbital'?.56:.48):1;
   let index=0;
   for (; index<atomCloudCount; index++) {
-    const model=chooseAtomModel(models), opacityScale=molecule?1:Math.min(1,.44+(model.frontier.n-1)*.18);
+    const model=chooseAtomModel(models), opacityScale=molecule?1.35:Math.min(1,.44+(model.frontier.n-1)*.18);
     writeAtomicCloud(data,index,model,mode,radiusScale,opacityScale);
   }
   const totalBondOrder=bonds.reduce((sum,bond)=>sum+bond.order,0);
@@ -331,7 +373,7 @@ export async function createElectronCloud(canvas, atoms, {mode='orbital',molecul
     const context = canvas.getContext('webgpu');
     const molecularExtent=Math.max(...atoms.map((atom)=>Math.hypot(atom.x,atom.y,atom.z)));
     const minimumScale=molecule?1.05:1.5;
-    const initialRotation=[0.14,-.17,0,.975],initialScale=molecule?Math.min(2.7,Math.max(1.15,6.5/(molecularExtent+1.2))):2.7;
+    const initialRotation=molecule?normalize([0.14,-.17,0,.975]):axisAngle([0,1,0],Math.PI/4),initialScale=molecule?Math.min(2.7,Math.max(1.15,6.5/(molecularExtent+1.2))):2.7;
     let rotation=[...initialRotation],scale=initialScale,active=true,hovered=false,dragging=false,dirty=true,px=0,py=0,depthTexture;
     let autoEnabled=!matchMedia('(prefers-reduced-motion: reduce)').matches;
     const reportState=()=>emitCloudState(canvas,{renderer:'WEBGPU',particleCount:data.length/8,motion:!autoEnabled?'paused':hovered||dragging?'hover':'auto',autoEnabled});

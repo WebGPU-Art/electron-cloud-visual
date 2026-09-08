@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "validate:molecules": "node scripts/validate-molecules.mjs",
-    "validate:interaction": "node scripts/validate-interaction.mjs",
+    "validate:interaction": "node scripts/validate-interaction.mjs && node scripts/validate-orbitals.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
