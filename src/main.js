@@ -93,7 +93,7 @@ function renderApp() {
   const legendPrimary=moleculeMode?(orbitalMode?'原子轨道贡献':'原子中心密度'):(orbitalMode?'波函数正相位':'高概率密度');
   const legendSecondary=moleculeMode?(orbitalMode?'键区 / π 电子密度':'键区总密度'):(orbitalMode?'波函数负相位':'低概率密度');
   const captionTitle=moleculeMode?(orbitalMode?'QUALITATIVE MOLECULAR ORBITAL':'MOLECULAR ELECTRON DENSITY'):(orbitalMode?'REPRESENTATIVE VALENCE ORBITAL':'TOTAL ELECTRON DENSITY');
-  const captionCopy=moleculeMode?'LCAO 定性近似 · 亮线为分子骨架':orbitalMode?'颜色表示波函数相位，不是电荷':'所有占据轨道的概率密度之和';
+  const captionCopy=moleculeMode?'局部轨道与键区示意 · 非量化计算':orbitalMode?'颜色表示波函数相位，不是电荷':'所有占据轨道的概率密度之和';
   const modelCard=moleculeMode?`
     <div class="orbit-card molecule-model-card"><div class="orbit-card-title">分子模型 <span>${info.electrons} e⁻</span></div>
       <div class="molecule-stats"><span><b>${info.atomCount}</b>可视原子中心</span><span><b>${info.bondCount}</b>推断键连接</span></div>
@@ -161,7 +161,7 @@ function renderApp() {
           </section>
         </aside>
       </section>
-      <section id="guide" class="guide"><div><span>01</span><h3>原子轨道组成分子轨道</h3><p>分子模式用原子轨道的线性组合近似键合，并增强两个原子核之间的共享电子密度。</p></div><div><span>02</span><h3>骨架帮助阅读云层</h3><p>亮线表示推断的原子连接；它不是电子轨迹。多重键同时展示轴向 σ 密度与轴外 π 密度。</p></div><div><span>03</span><h3>定性，而非量化计算</h3><p>复杂分子的精确轨道需要量子化学数值求解；本模型用于观察几何、节点和离域趋势。</p></div></section>
+      <section id="guide" class="guide"><div><span>01</span><h3>局部轨道与键区</h3><p>分子模式沿局部成键几何排列原子轨道，并添加键区概率云；尚未求解分子波函数及其干涉项。</p></div><div><span>02</span><h3>骨架帮助阅读云层</h3><p>亮线表示原子连接；它不是电子轨迹。多重键同时展示轴向 σ 密度与轴外 π 密度。</p></div><div><span>03</span><h3>定性，而非量化计算</h3><p>轨道大小经过显示缩放；精确的分子轨道及电子密度需要量子化学数值求解。</p></div></section>
       <footer>ORBITAL ATLAS <span>构建于 WEBGPU / VITE</span><span>© 2026</span></footer>
     </main>`;
 

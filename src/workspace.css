@@ -89,6 +89,8 @@ main { margin-left: 0; }
 .composition-row span { padding: 4px 7px; border-radius: 10px; color: #356fc8; background: #eef5ff; font: 9px 'DM Mono'; }
 .composition-row b { margin-left: 3px; color: #8493a8; font-weight: 500; }
 
+.atom-symbol { flex-shrink: 0; width: auto; min-width: 54px; padding: 0 10px; border-radius: 12px; font-size: 16px; }
+
 .field-keys.molecular { grid-template-columns: repeat(3, 1fr); }
 .key-point.bond { border-radius: 1px; background: #d7e8ff; box-shadow: 0 0 5px #8cbcff; }
 
@@ -154,6 +156,9 @@ main { margin-left: 0; }
 
 @media (max-width: 1120px) {
   .workspace { grid-template-columns: 1fr; }
+  .viewer-column { position: sticky; top: 8px; z-index: 4; }
+  .canvas-frame { height: clamp(300px, 48vh, 540px); min-height: 0; }
+  .control-column { max-height: 38vh; overflow-y: auto; overscroll-behavior: contain; }
 }
 
 @media (max-width: 720px) {
